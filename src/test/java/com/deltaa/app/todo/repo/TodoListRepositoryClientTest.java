@@ -28,6 +28,7 @@ import com.google.common.collect.Lists;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertNotNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -45,10 +46,6 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 public class TodoListRepositoryClientTest {
 
 	private MediaType contentType = new MediaType("application", "hal+json", Charset.forName("UTF-8"));
-
-	private static final String BASE_PATH = "api/";
-	private static final String TODO_LIST_END = "todoLists/";
-
 
 	private List<TodoList> todoLists = Lists.newArrayList();
 
@@ -95,11 +92,78 @@ public class TodoListRepositoryClientTest {
 
 	@Test
 	public void readTodoListCollection() throws Exception {
-		mockMvc.perform(get("/" + BASE_PATH + TODO_LIST_END ))
+		mockMvc.perform(get("/api/todoLists"))
 			.andExpect(status().isOk())
 			.andExpect(content().contentType(contentType))
 			.andExpect(jsonPath("$._embedded.todoLists", hasSize(1)))
-			.andExpect(jsonPath("$._embedded.todoLists[0].id", is(this.todoLists.get(0).getId().intValue())));
+			.andExpect(jsonPath("$._embedded.todoLists[0].id", is(this.todoLists.get(0).getId().intValue())))
+			.andExpect(jsonPath("$._embedded.todoLists[0].name", is(this.todoLists.get(0).getName())))
+			.andExpect(jsonPath("$._embedded.todoLists[0].description", is(this.todoLists.get(0).getDescription())));
+
+		mockMvc.perform(get(String.format("/api/todoLists/%d/todoItems", this.todoLists.get(0).getId())))
+			.andExpect(status().isOk())
+			.andExpect(content().contentType(contentType))
+			.andExpect(jsonPath("$._embedded.todoItems", hasSize(2)))
+			.andExpect(jsonPath("$._embedded.todoItems[0].name", is("java")))
+			.andExpect(jsonPath("$._embedded.todoItems[1].name", is("spring")));
+	}
+
+	@Test
+	public void addRemoveTodoList() throws Exception {
+		String todoJson = json(new TodoList("newTodoList", "added for testing"));
+		this.mockMvc.perform(post("/api/todoLists")
+			.contentType(contentType)
+			.content(todoJson))
+			.andExpect(status().isCreated());
+
+		// newly added item the count should be 2
+		mockMvc.perform(get("/api/todoLists"))
+			.andExpect(status().isOk())
+			.andExpect(content().contentType(contentType))
+			.andExpect(jsonPath("$._embedded.todoLists", hasSize(2)));
+
+
+		this.mockMvc.perform(delete("/api/todoLists/" + this.todoLists.get(0).getId()))
+			.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/todoLists"))
+			.andExpect(status().isOk())
+			.andExpect(content().contentType(contentType))
+			.andExpect(jsonPath("$._embedded.todoLists", hasSize(1)));
+	}
+
+
+	@Test
+	public void addRemoveTodoItem() throws Exception {
+
+		String parentRef = "http://localhost:8080/api/todoLists/" + this.todoLists.get(0).getId();
+
+		String todoJson = "{\n" +
+			"  \"name\" : \"todItem\",\n" +
+			"  \"todoList\" : \"" + parentRef + "\",\n" +
+			"  \"description\" : \"desc\",\n" +
+			"  \"status\" : \"PENDING\",\n" +
+			"  \"dateOfCompletion\" : \"2017-04-25T19:23:18.347+01:00\",\n" +
+			"  \"tags\" : null\n" +
+			"}";
+
+		this.mockMvc.perform(post("/api/todoItems")
+			.contentType(contentType)
+			.content(todoJson))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(get(String.format("/api/todoLists/%d/todoItems", this.todoLists.get(0).getId())))
+			.andExpect(status().isOk())
+			.andExpect(content().contentType(contentType))
+			.andExpect(jsonPath("$._embedded.todoItems", hasSize(3)));
+
+		this.mockMvc.perform(delete("/api/todoItems/" + this.todoLists.get(0).getTodoItems().iterator().next().getId()))
+			.andExpect(status().isNoContent());
+
+		mockMvc.perform(get(String.format("/api/todoLists/%d/todoItems", this.todoLists.get(0).getId())))
+			.andExpect(status().isOk())
+			.andExpect(content().contentType(contentType))
+			.andExpect(jsonPath("$._embedded.todoItems", hasSize(2)));
 	}
 
 	private String json(Object o) throws IOException {
