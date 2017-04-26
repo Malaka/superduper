@@ -3,6 +3,7 @@ Sample todo app
 
 # How to run the application
 
+* mvn -N io.takari:maven:wrapper
 * mvn clean install
 * ./mvnw spring-boot:run
 
